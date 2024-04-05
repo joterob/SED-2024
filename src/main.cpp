@@ -21,6 +21,9 @@
 //=======================================================
 #include <Arduino.h>
 
+//=======================================================
+//  LIBRARY Definition
+//=======================================================
 #define REALMATRIX // Variable to use real matrix. Comment to not use it.
 
 #ifdef REALMATRIX
@@ -31,15 +34,15 @@
  ARDUINO pin 10 is connected to LOAD        - In ES32 pin 5
  We have only a single MAX72XX.
  */
-LedControl lc=LedControl(23,18,5,1);
+LedControl lc = LedControl(23, 18, 5, 1);
 #endif
 
 //=======================================================
 //  IF PROBLEMS
 //=======================================================
-// In LedControl.h  change the following line:
+// In LedControl.h change the following line:
 // #include <avr/pgmspace.h>
-// by 
+// by
 /* #if (defined(__AVR__))
  #include <avr\pgmspace.h>
  #else
@@ -61,29 +64,32 @@ unsigned long delaytime = 2000;
 int i = 0;
 
 /* States ans signals to change state*/
-enum State_enum {STATERESET, STATESTART, STATECLEAR, STATECHECK, STATELEFT, STATERIGTH, STATELOST};
+enum State_enum { STATERESET, STATESTART, STATECLEAR, STATECHECK, STATELEFT, STATERIGTH, STATELOST };
 uint8_t state = STATERESET;
 
-enum Keys_enum {RESET_KEY, START_KEY, LEFT_KEY, RIGHT_KEY, NO_KEY};
+enum Keys_enum { RESET_KEY, START_KEY, LEFT_KEY, RIGHT_KEY, NO_KEY };
 uint8_t keys = RESET_KEY;
 
-enum Status_enum {LOST, CONTINUE};
+enum Status_enum { LOST, CONTINUE };
 uint8_t Status = CONTINUE;
 
 /* Key to control game by serial input. */
-  int incomingByte;
+int incomingByte;
 
 /* Pointer and Matrix to Control Driver. */
-  byte RegMatrix[8];
-  byte *pointerRegMatrix;
+byte RegMatrix[8];
+byte *pointerRegMatrix;
 
 /* Pointer and Register to control bottom car. */
-  byte RegCar[1];
-  byte *pointerRegCar;
+byte RegCar[1];
+byte *pointerRegCar;
 
 /* Pointer and Register (Variable) to move bottom car */
-  byte ShiftDir[1];
-  byte *pointerShiftDir;
+byte ShiftDir[1];
+byte *pointerShiftDir;
+
+uint8_t level = 1; // Current level
+unsigned long minDelaytime = 200; // Minimum delay time between levels
 
 //=======================================================
 //  SETUP Arduino function
@@ -148,7 +154,7 @@ void writeStartMatrix(byte *pointerRegMatrix, byte *pointerRegCar)
   pointerRegMatrix[2] = B10011001;
   pointerRegMatrix[1] = B10000001;
   pointerRegMatrix[0] = B01111110;
-/* Here is the data to start bottomCar */
+  /* Here is the data to start bottomCar */
   pointerRegCar[0] = B00000000;
 }
 //=======================================================
@@ -217,7 +223,7 @@ void writeCarBase(byte *pointerRegCar, byte *pointerShiftDir)
 {
   /* Global variables. */
   int m;
-  
+
   /* Here is the data to start matrix */
   if (pointerShiftDir[0] == B00000001)
   {
@@ -260,7 +266,7 @@ void checkLostMatrix(byte *pointerRegMatrix, byte *pointerRegCar)
 void printBits(byte myByte)
 {
   for (byte mask = 0x80; mask; mask >>= 1) {
-    if (mask  & myByte)
+    if (mask & myByte)
       Serial.print('1');
     else
       Serial.print('0');
@@ -317,8 +323,6 @@ byte read_KEY(void)
   {
     incomingByte = Serial.read();
     delay(10);
-    //    Serial.print("I received: ");
-    //    Serial.println(incomingByte, DEC);
   }
   switch (incomingByte)
   {
@@ -338,12 +342,13 @@ byte read_KEY(void)
       keys = NO_KEY;
       break;
   }
-return keys;
+  return keys;
 }
+
 //=======================================================
 //  FUNCTION: state_machine_run
 //=======================================================
-void state_machine_run(byte *pointerRegMatrix, byte *pointerRegCar, byte *pointerShiftDir)
+void state_machine_run(byte *pointerRegMatrix, byte *pointerRegCar, byte *pointerShiftDir, byte keys)
 {
   /* Global variables. */
   int count;
@@ -353,7 +358,7 @@ void state_machine_run(byte *pointerRegMatrix, byte *pointerRegCar, byte *pointe
   switch (state)
   {
     case STATERESET:
-      writeResetMatrix(pointerRegMatrix,pointerRegCar);
+      writeResetMatrix(pointerRegMatrix, pointerRegCar);
       delay(delaytime);
       if (keys == RESET_KEY)
         state = STATERESET;
@@ -362,13 +367,13 @@ void state_machine_run(byte *pointerRegMatrix, byte *pointerRegCar, byte *pointe
       break;
 
     case STATESTART:
-      writeStartMatrix(pointerRegMatrix,pointerRegCar);
+      writeStartMatrix(pointerRegMatrix, pointerRegCar);
       delay(delaytime);
       state = STATECLEAR;
       break;
 
     case STATECLEAR:
-      writeClearMatrix(pointerRegMatrix,pointerRegCar);
+      writeClearMatrix(pointerRegMatrix, pointerRegCar);
       delay(delaytime);
       state = STATECHECK;
       break;
@@ -404,7 +409,7 @@ void state_machine_run(byte *pointerRegMatrix, byte *pointerRegCar, byte *pointe
       break;
 
     case STATELOST:
-      writeLostMatrix(pointerRegMatrix,pointerRegCar);
+      writeLostMatrix(pointerRegMatrix, pointerRegCar);
       delay(delaytime);
       if (keys == START_KEY)
         state = STATESTART;
@@ -417,13 +422,20 @@ void state_machine_run(byte *pointerRegMatrix, byte *pointerRegCar, byte *pointe
       break;
   }
 }
+
 //=======================================================
 //  FUNCTION: Arduino loop
 //=======================================================
 void loop()
 {
-  
   read_KEY();
-  state_machine_run(pointerRegMatrix,pointerRegCar,pointerShiftDir);
+  state_machine_run(pointerRegMatrix, pointerRegCar, pointerShiftDir, keys);
+
+  // Increase speed after every level
+  if (state == STATECLEAR) {
+    delaytime = max(delaytime - 200, minDelaytime);
+    level++; // Increment level
+  }
+
   delay(1);
 }
